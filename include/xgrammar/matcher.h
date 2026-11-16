@@ -12,6 +12,7 @@
 #include <xgrammar/object.h>
 
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <string>
 #include <variant>
@@ -150,6 +151,18 @@ class GrammarMatcher {
    * \note This method does not change the grammar state.
    */
   std::string FindJumpForwardString();
+
+  /*!
+   * \brief Report every completion of a rule marked [on_complete] in the grammar: the rule name,
+   * the matched bytes and their [begin, end) offsets in the accepted input. Must be set before
+   * any input is accepted; while set, FillNextTokenBitmask and FindJumpForwardString are not
+   * available. Completions of partial matches are reported too (e.g. "o", "ou", "out").
+   */
+  void SetOnComplete(
+      std::function<
+          void(const std::string& rule, const std::string& text, int64_t begin, int64_t end)>
+          callback
+  );
 
   /*!
    * \brief Rollback the matcher to a previous state.

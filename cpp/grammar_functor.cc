@@ -82,6 +82,7 @@ class SubGrammarAdderImpl : public GrammarMutator {
         builder_->UpdateSuffixStopInfo(new_rule_ids_names[i].first, remapped_info);
       }
       builder_->UpdateLazy(new_rule_ids_names[i].first, rule.is_lazy);
+      builder_->UpdateOnComplete(new_rule_ids_names[i].first, rule.on_complete);
       builder_->UpdateRuleTemperature(new_rule_ids_names[i].first, rule.temperature);
     }
     return new_rule_ids_names[base_grammar_->GetRootRuleId()].first;
@@ -294,6 +295,7 @@ class StructureNormalizerImpl : public GrammarMutator {
         builder_->UpdateSuffixStopInfo(i, *suffix_stop_info);
       }
       builder_->UpdateLazy(i, rule.is_lazy);
+      builder_->UpdateOnComplete(i, rule.on_complete);
       builder_->UpdateRuleTemperature(i, rule.temperature);
     }
     return builder_->Get(base_grammar_->GetRootRule().name);
@@ -805,9 +807,10 @@ class RuleInlinerImpl : public InPlaceGrammarRewriter {
     // capture-relevant rule would eliminate its completion events, so its capture or hidden span
     // would never be recorded. Inlining a lazy rule would erase its committed-shortest semantics.
     // Inlining a temperature rule would erase the rule its sampling temperature applies to.
+    // Inlining an [on_complete] rule would erase the completions OnComplete reports.
     if (rule.max_tokens >= 0 || rule.max_chars >= 0 || !rule.capture_name.empty() ||
         (*grammar_)->GetSuffixStopInfo(rule_id) != nullptr || rule.is_lazy ||
-        rule.temperature.has_value()) {
+        rule.temperature.has_value() || rule.on_complete) {
       can_rule_be_inlined_[rule_id] = false;
       return false;
     }
@@ -938,6 +941,7 @@ class DeadCodeEliminatorImpl : public GrammarMutator {
         builder_->UpdateSuffixStopInfo(rule_id_map_[rule_id], remapped_info);
       }
       builder_->UpdateLazy(rule_id_map_[rule_id], rule.is_lazy);
+      builder_->UpdateOnComplete(rule_id_map_[rule_id], rule.on_complete);
       builder_->UpdateRuleTemperature(rule_id_map_[rule_id], rule.temperature);
     }
     XGRAMMAR_CHECK(rule_id_map_.count(grammar->GetRootRuleId()) > 0);
@@ -2302,6 +2306,7 @@ class LazyBodyFlattenerImpl : public GrammarMutator {
         builder_->UpdateSuffixStopInfo(i, *suffix_stop_info);
       }
       builder_->UpdateLazy(i, rule.is_lazy);
+      builder_->UpdateOnComplete(i, rule.on_complete);
       builder_->UpdateRuleTemperature(i, rule.temperature);
     }
     return builder_->Get(base_grammar_->GetRootRule().name);

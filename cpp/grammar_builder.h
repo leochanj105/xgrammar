@@ -259,6 +259,9 @@ class GrammarBuilder {
   /*! \brief Set whether the rule referred by the given name is lazy (committed-shortest). */
   void UpdateLazy(std::string rule_name, bool is_lazy);
 
+  /*! \brief Set whether completions of the rule are reported to OnComplete ([on_complete]). */
+  void UpdateOnComplete(int32_t rule_id, bool on_complete);
+
   /*!
    * \brief Find a name for a new rule starting with the given name hint. Some integer suffix (_1,
    * _2, ...) may be added to avoid name conflict.

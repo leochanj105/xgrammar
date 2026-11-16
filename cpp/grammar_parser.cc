@@ -151,7 +151,8 @@ EBNFLexer::Token EBNFLexer::Impl::ParseIdentifierOrBooleanToken() {
   // name[capture="x"] ::= ...,
   // name[capture_hidden_suffix_bytes=3] ::= ..., name[capture_hidden_stop_bytes=3] ::= ...,
   // name[capture_hidden_body_rule_id=1, capture_hidden_marker_rule_id=2] ::= ...,
-  // name[stop_capture="marker"] ::= ..., name[lazy] ::= ..., name[temperature=0.7] ::= ..., or a
+  // name[stop_capture="marker"] ::= ..., name[lazy] ::= ..., name[temperature=0.7] ::= ...,
+  // name[on_complete] ::= ..., or a
   // comma-separated combination.
   // The bracket group is treated as an attribute block only when it is followed by "::=";
   // otherwise it is left to be lexed as a character class.
@@ -184,6 +185,7 @@ EBNFLexer::Token EBNFLexer::Impl::ParseIdentifierOrBooleanToken() {
     bool has_capture_hidden_marker_rule_id = false;
     bool has_stop_capture = false;
     bool has_lazy = false;
+    bool has_on_complete = false;
     bool has_temperature = false;
     double temperature_value = 0;
     int64_t max_tokens_value = -1;
@@ -296,6 +298,8 @@ EBNFLexer::Token EBNFLexer::Impl::ParseIdentifierOrBooleanToken() {
         }
       } else if (!has_lazy && match_keyword("lazy")) {
         has_lazy = true;
+      } else if (!has_on_complete && match_keyword("on_complete")) {
+        has_on_complete = true;
       } else if (!has_temperature && match_keyword("temperature")) {
         has_temperature = true;
         matched = parse_float_value(&temperature_value);
@@ -381,6 +385,7 @@ EBNFLexer::Token EBNFLexer::Impl::ParseIdentifierOrBooleanToken() {
           static_cast<int32_t>(capture_hidden_marker_rule_id_value);
       token.stop_capture_name = stop_capture_value;
       token.is_lazy = has_lazy;
+      token.on_complete = has_on_complete;
       if (has_temperature) {
         token.temperature = static_cast<float>(temperature_value);
       }
@@ -1508,6 +1513,7 @@ EBNFParser::ParsedRule EBNFParser::ParseRule() {
   int32_t capture_hidden_marker_rule_id = Peek().capture_hidden_marker_rule_id;
   std::string stop_capture_name = Peek().stop_capture_name;
   bool is_lazy = Peek().is_lazy;
+  bool on_complete = Peek().on_complete;
   std::optional<float> temperature = Peek().temperature;
   Consume();
 
@@ -1526,6 +1532,7 @@ EBNFParser::ParsedRule EBNFParser::ParseRule() {
   result.rule.max_chars = max_chars;
   result.rule.capture_name = capture_name;
   result.rule.is_lazy = is_lazy;
+  result.rule.on_complete = on_complete;
   result.rule.temperature = temperature;
   result.suffix_stop_info.hidden_suffix_bytes = capture_hidden_suffix_bytes;
   result.suffix_stop_info.hidden_stop_bytes = capture_hidden_stop_bytes;
@@ -1577,6 +1584,7 @@ Grammar EBNFParser::Parse(
     builder_.UpdateCaptureName(rule.name, rule.capture_name);
     builder_.UpdateSuffixStopInfo(rule.name, parsed_rule.suffix_stop_info);
     builder_.UpdateLazy(rule.name, rule.is_lazy);
+    builder_.UpdateOnComplete(builder_.GetRuleId(rule.name), rule.on_complete);
     builder_.UpdateRuleTemperature(builder_.GetRuleId(rule.name), rule.temperature);
   }
 

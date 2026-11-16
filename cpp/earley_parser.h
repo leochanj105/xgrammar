@@ -8,6 +8,7 @@
 #define XGRAMMAR_EARLEY_PARSER_H_
 #include <algorithm>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <optional>
 #include <ostream>
@@ -520,6 +521,14 @@ class EarleyParser {
   /*! \brief Remove the states of the lazy occurrences completed in the current row. */
   void RemoveCommittedLazyStates();
 
+  /*! \brief Called on every completion of an [on_complete] rule, with the rule name,
+   * the matched bytes and their [begin, end) offsets. Empty means no callback. */
+  std::function<void(const std::string&, const std::string&, int64_t, int64_t)> on_complete_;
+
+  /*! \brief The accepted input bytes, one per history row after the first; maintained only
+   * while on_complete_ is set, and rolled back with the rows. */
+  std::string on_complete_input_;
+
   /*!
    * \brief Check if the state has been added into the queue.
    * \param state The state to check.
@@ -689,6 +698,19 @@ class EarleyParser {
    * \param count The number of states to be removed.
    */
   void PopLastStates(int32_t count = 1);
+
+  /*!
+   * \brief Set the callback for completions of [on_complete] rules. Must be set before any
+   * input is accepted. While it is set, the right-recursion shortcut is disabled; the initial
+   * row is rebuilt from the root so that it, too, is expanded without the shortcut. Not
+   * supported for grammars with token or character budgets.
+   */
+  void SetOnComplete(
+      std::function<void(const std::string&, const std::string&, int64_t, int64_t)> callback
+  );
+
+  /*! \brief Whether an OnComplete callback is set. */
+  bool HasOnComplete() const { return static_cast<bool>(on_complete_); }
 
   /*!
    * \brief Check whether any of the multiple states stored in the parser has already completed.

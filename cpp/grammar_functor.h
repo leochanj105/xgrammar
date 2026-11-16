@@ -76,6 +76,7 @@ class GrammarFunctor {
           builder_->UpdateSuffixStopInfo(i, *suffix_stop_info);
         }
         builder_->UpdateLazy(i, rule.is_lazy);
+        builder_->UpdateOnComplete(i, rule.on_complete);
         builder_->UpdateRuleTemperature(i, rule.temperature);
       }
       return builder_->Get(base_grammar_->GetRootRule().name);

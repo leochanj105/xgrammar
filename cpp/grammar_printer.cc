@@ -19,7 +19,8 @@ std::string GrammarPrinter::PrintRule(const Rule& rule, const SuffixStopInfo* su
   std::string res = rule.name;
   // Print the attributes as one comma-separated bracket group, re-parseable by the EBNF lexer.
   if (rule.max_tokens >= 0 || rule.max_chars >= 0 || !rule.capture_name.empty() ||
-      suffix_stop_info != nullptr || rule.is_lazy || rule.temperature.has_value()) {
+      suffix_stop_info != nullptr || rule.is_lazy || rule.temperature.has_value() ||
+      rule.on_complete) {
     std::string attributes;
     auto append_attribute = [&](const std::string& attribute) {
       if (!attributes.empty()) {
@@ -59,6 +60,9 @@ std::string GrammarPrinter::PrintRule(const Rule& rule, const SuffixStopInfo* su
     }
     if (rule.is_lazy) {
       append_attribute("lazy");
+    }
+    if (rule.on_complete) {
+      append_attribute("on_complete");
     }
     if (rule.temperature.has_value()) {
       std::ostringstream temperature;

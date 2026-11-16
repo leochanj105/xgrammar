@@ -112,6 +112,9 @@ void EarleyParser::PopLastStates(int32_t cnt) {
   rule_id_to_completable_states_.PopBack(cnt);
   is_completed_.erase(is_completed_.end() - cnt, is_completed_.end());
   scanable_state_history_.PopBack(cnt);
+  if (on_complete_) {
+    on_complete_input_.resize(on_complete_input_.size() - cnt);
+  }
   if (capture_tracking_) {
     capture_event_history_.PopBack(cnt);
   }
@@ -124,6 +127,17 @@ void EarleyParser::PopLastStates(int32_t cnt) {
 }
 
 void EarleyParser::Complete(const ParserState& state, bool debug_print, bool marker_present) {
+  if (on_complete_ && state.rule_id != -1 && grammar_->GetRule(state.rule_id).on_complete) {
+    // Rows are bytes here: row r is the state after r accepted bytes (see SetOnComplete).
+    int64_t begin = state.rule_start_pos == ParserState::kNoPrevInputPos ? 0 : state.rule_start_pos;
+    int64_t end = static_cast<int64_t>(rule_id_to_completable_states_.size()) - 1;
+    on_complete_(
+        grammar_->GetRule(state.rule_id).name,
+        on_complete_input_.substr(begin, end - begin),
+        begin,
+        end
+    );
+  }
   // Record capture and hidden-span events. This is only enabled during definitive advances;
   // speculative completions (mask computation, lookahead) never record events.
   if (capture_recording_ && RuleNeedsCaptureEvent(state.rule_id)) {
@@ -393,6 +407,9 @@ bool EarleyParser::Advance(const uint8_t ch, bool debug_print) {
     tmp_char_budget_entered_ = char_budget_entry_history_.back();
     char_count_history_.push_back(GetCurrentCharIndex() + StartsUTF8Codepoint(ch));
   }
+  if (on_complete_) {
+    on_complete_input_.push_back(static_cast<char>(ch));
+  }
   const auto& latest_states = scanable_state_history_[scanable_state_history_.size() - 1];
   // Scan all the scanable states.
   for (const auto& state : latest_states) {
@@ -406,6 +423,9 @@ bool EarleyParser::Advance(const uint8_t ch, bool debug_print) {
   if (tmp_process_state_queue_.empty() && tmp_states_to_be_added_.empty()) {
     if (has_char_budget_rules_) {
       char_count_history_.pop_back();
+    }
+    if (on_complete_) {
+      on_complete_input_.pop_back();
     }
     return false;
   }
@@ -486,7 +506,25 @@ EarleyParser::EarleyParser(const Grammar& grammar, std::optional<ParserState> in
   for (int32_t rule_id : grammar_->allow_empty_rule_ids) {
     rule_is_nullable_[rule_id] = true;
   }
+  for (int32_t i = 0; i < grammar_->NumRules(); ++i) {
+    XGRAMMAR_CHECK(!(grammar_->GetRule(i).on_complete && rule_is_nullable_[i]))
+        << "The [on_complete] rule " << grammar_->GetRule(i).name
+        << " can match the empty string; reporting such rules is not supported.";
+  }
   PushStateAndExpand(initial_state.has_value() ? *initial_state : RootInitialState());
+}
+
+void EarleyParser::SetOnComplete(
+    std::function<void(const std::string&, const std::string&, int64_t, int64_t)> callback
+) {
+  XGRAMMAR_CHECK(rule_id_to_completable_states_.size() == 1)
+      << "OnComplete must be set before any input is accepted.";
+  XGRAMMAR_CHECK(!has_budget_rules_ && !has_char_budget_rules_)
+      << "OnComplete is not supported for grammars with max_tokens or max_chars.";
+  on_complete_ = std::move(callback);
+  // The constructor expanded the initial row before the callback existed, so the
+  // right-recursion shortcut may have skipped completions there; expand it again.
+  Reset();
 }
 
 uint8_t EarleyParser::InitializeFsmStateFlags(int32_t rule_id, int32_t state_id) {
@@ -579,6 +617,7 @@ void EarleyParser::Reset() {
   }
   char_count_history_.clear();
   char_budget_entry_history_.clear();
+  on_complete_input_.clear();
   tmp_char_budget_entered_ = false;
   capture_recording_ = false;
   XGRAMMAR_DCHECK(tmp_process_state_queue_.empty());
@@ -613,7 +652,8 @@ void EarleyParser::ExpandNextRuleRefElement(
   if (state.element_id != grammar_expr.size() - 1 ||
       sub_grammar_expr->type == GrammarExprType::kRepeat ||
       (state.rule_start_pos == rule_id_to_completable_states_.size() - 1) ||
-      RuleNeedsCaptureEvent(state.rule_id) || RuleNeedsCaptureEvent(ref_rule_id)) {
+      RuleNeedsCaptureEvent(state.rule_id) || RuleNeedsCaptureEvent(ref_rule_id) ||
+      on_complete_) {
     // It's not the right recursion, or it's the root rule.
     rule_id_to_completable_states_.PushBackInLatestRow(std::make_pair(ref_rule_id, state));
   } else {
@@ -750,7 +790,8 @@ void EarleyParser::ExpandNextRuleRefElementOnFSM(const ParserState& state, bool 
     const uint8_t target_flags = GetFsmStateFlags(state.rule_id, target);
     if (!is_repeat && !(target_flags & kFsmStateHasEdges) && (target_flags & kFsmStateEnd) &&
         state.rule_start_pos != static_cast<int32_t>(rule_id_to_completable_states_.size() - 1) &&
-        !RuleNeedsCaptureEvent(state.rule_id) && !RuleNeedsCaptureEvent(ref_rule_id)) {
+        !RuleNeedsCaptureEvent(state.rule_id) && !RuleNeedsCaptureEvent(ref_rule_id) &&
+        !on_complete_) {
       // It's a right recursion. We can optimize it. The optimization elides the completion of
       // the parent rule, so it is disabled when either rule produces capture-history events.
       // If it's the right recursion, we need to add the ancestors of the parent state.
@@ -1187,6 +1228,8 @@ void EarleyParser::ScanAtomicToken(const ParserState& state, int32_t token_id) {
 bool EarleyParser::AdvanceAtomicToken(
     int32_t token_id, bool debug_print, int32_t token_char_count
 ) {
+  // One row for a whole token would break the row = byte offsets OnComplete reports.
+  XGRAMMAR_CHECK(!on_complete_) << "OnComplete is not supported with token-id grammar elements.";
   XGRAMMAR_DCHECK(tmp_process_state_queue_.empty())
       << "The tmp_process_state_queue_ should be empty before AdvanceAtomicToken.";
   tmp_states_visited_in_queue_.Clear();

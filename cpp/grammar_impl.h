@@ -98,6 +98,9 @@ class Grammar::Impl {
     bool is_lazy = false;
     /*! \brief The sampling temperature to use while matching this rule. */
     std::optional<float> temperature = std::nullopt;
+    /*! \brief Whether completions of this rule are reported to the matcher's OnComplete
+     * callback. Such a rule is never inlined. */
+    bool on_complete = false;
   };
 
   /*! \brief Sparse per-rule metadata used to materialize suffix and stop captures. */
@@ -447,7 +450,8 @@ XGRAMMAR_MEMBER_ARRAY(
     &Grammar::Impl::Rule::max_chars,
     &Grammar::Impl::Rule::capture_name,
     &Grammar::Impl::Rule::is_lazy,
-    &Grammar::Impl::Rule::temperature
+    &Grammar::Impl::Rule::temperature,
+    &Grammar::Impl::Rule::on_complete
 );
 
 XGRAMMAR_MEMBER_ARRAY(

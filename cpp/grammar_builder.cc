@@ -391,6 +391,12 @@ void GrammarBuilder::UpdateLazy(int32_t rule_id, bool is_lazy) {
   grammar_->rules_[rule_id].is_lazy = is_lazy;
 }
 
+void GrammarBuilder::UpdateOnComplete(int32_t rule_id, bool on_complete) {
+  XGRAMMAR_CHECK(rule_id < static_cast<int32_t>(grammar_->rules_.size()))
+      << "Rule id " << rule_id << " is out of range.";
+  grammar_->rules_[rule_id].on_complete = on_complete;
+}
+
 void GrammarBuilder::UpdateLazy(std::string rule_name, bool is_lazy) {
   int32_t rule_id = GetRuleId(rule_name);
   XGRAMMAR_CHECK(rule_id != -1) << "Rule " << rule_name << " is not found.";

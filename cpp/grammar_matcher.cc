@@ -1666,6 +1666,7 @@ bool GrammarMatcher::Impl::IsTokenBitmaskAllTrue(int32_t* bitmask_data_ptr) {
 bool GrammarMatcher::Impl::FillNextTokenBitmask(
     DLTensor* next_token_bitmask, int index, bool debug_print
 ) {
+  XGRAMMAR_CHECK(!HasOnComplete()) << "FillNextTokenBitmask is not supported with OnComplete.";
   XGRAMMAR_CHECK(!IsStopTokenAccepted())
       << "GrammarMatcher has terminated after accepting the stop token, but is trying to "
          "find the next token mask";
@@ -2054,6 +2055,7 @@ void GrammarMatcher::Impl::FillBitmaskForStates(
 }
 
 std::string GrammarMatcher::Impl::FindJumpForwardString() {
+  XGRAMMAR_CHECK(!HasOnComplete()) << "FindJumpForwardString is not supported with OnComplete.";
   XGRAMMAR_CHECK(!IsStopTokenAccepted())
       << "GrammarMatcher has terminated after accepting the stop token, but is trying to "
          "get the jump forward string";
@@ -2736,6 +2738,12 @@ bool GrammarMatcher::TraverseDraftTree(
 std::string GrammarMatcher::FindJumpForwardString() { return pimpl_->FindJumpForwardString(); }
 
 void GrammarMatcher::Rollback(int num_tokens) { pimpl_->Rollback(num_tokens); }
+
+void GrammarMatcher::SetOnComplete(
+    std::function<void(const std::string&, const std::string&, int64_t, int64_t)> callback
+) {
+  pimpl_->SetOnComplete(std::move(callback));
+}
 
 std::vector<std::pair<std::string, std::string>> GrammarMatcher::GetCaptures(bool deduplicate
 ) const {
