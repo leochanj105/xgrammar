@@ -55,7 +55,9 @@ struct ParserState {
       const int32_t& repeat_count = 0,
       const int32_t& partial_codepoint = 0,
       const int32_t& active_temperature_rule_id = -1,
-      const int32_t& char_budget_deadline = -1
+      const int32_t& char_budget_deadline = -1,
+      const int32_t& entry_env = 0,
+      const int32_t& env = 0
   )
       : rule_id(rule_id),
         sequence_id(sequence_id),
@@ -66,7 +68,9 @@ struct ParserState {
         repeat_count(repeat_count),
         partial_codepoint(partial_codepoint),
         active_temperature_rule_id(active_temperature_rule_id),
-        char_budget_deadline(char_budget_deadline) {}
+        char_budget_deadline(char_budget_deadline),
+        entry_env(entry_env),
+        env(env) {}
 
   /*!
    * \brief A rule_start_pos value of kNoPrevInputPos means this ParserState is the root of the
@@ -110,6 +114,12 @@ struct ParserState {
    * character budget expires; -1 means unlimited. Stored as an absolute input position. */
   int32_t char_budget_deadline = -1;
 
+  /*! \brief Mock semantic environment ids. entry_env is the environment this rule occurrence
+   * was predicted with; env is the current one, updated by OnComplete when a child completes.
+   * Both are 0 unless an OnComplete callback changes them. */
+  int32_t entry_env = 0;
+  int32_t env = 0;
+
   /*!
    * \brief Lexicographic order over all fields. It is only used to sort the states for
    * deterministic serialization, and is not needed during parsing.
@@ -128,7 +138,11 @@ struct ParserState {
     if (active_temperature_rule_id != other.active_temperature_rule_id) {
       return active_temperature_rule_id < other.active_temperature_rule_id;
     }
-    return char_budget_deadline < other.char_budget_deadline;
+    if (char_budget_deadline != other.char_budget_deadline) {
+      return char_budget_deadline < other.char_budget_deadline;
+    }
+    if (entry_env != other.entry_env) return entry_env < other.entry_env;
+    return env < other.env;
   }
 
   friend std::ostream& operator<<(std::ostream& os, const ParserState& state) {
@@ -156,6 +170,9 @@ struct ParserState {
     }
     if (char_budget_deadline != -1) {
       result += ", char_budget_deadline=" + std::to_string(char_budget_deadline);
+    }
+    if (entry_env != 0 || env != 0) {
+      result += ", entry_env=" + std::to_string(entry_env) + ", env=" + std::to_string(env);
     }
     result += ")";
     return result;
@@ -213,7 +230,8 @@ class StateEqualForParsing {
            lhs.partial_codepoint == rhs.partial_codepoint &&
            lhs.budget_deadline == rhs.budget_deadline &&
            lhs.active_temperature_rule_id == rhs.active_temperature_rule_id &&
-           lhs.char_budget_deadline == rhs.char_budget_deadline;
+           lhs.char_budget_deadline == rhs.char_budget_deadline &&
+           lhs.entry_env == rhs.entry_env && lhs.env == rhs.env;
   }
 };
 
@@ -234,7 +252,9 @@ class StateHashForParsing {
         state.partial_codepoint,
         state.budget_deadline,
         state.active_temperature_rule_id,
-        state.char_budget_deadline
+        state.char_budget_deadline,
+        state.entry_env,
+        state.env
     );
   }
 };
@@ -521,9 +541,10 @@ class EarleyParser {
   /*! \brief Remove the states of the lazy occurrences completed in the current row. */
   void RemoveCommittedLazyStates();
 
-  /*! \brief Called on every completion of an [on_complete] rule, with the rule name,
-   * the matched bytes and their [begin, end) offsets. Empty means no callback. */
-  std::function<void(const std::string&, const std::string&, int64_t, int64_t)> on_complete_;
+  /*! \brief Called on every completion of an [on_complete] rule, with the rule name, the
+   * matched bytes, their [begin, end) offsets and the completed state's env; returns the env
+   * the waiting parent continues with. Empty means no callback. */
+  std::function<int32_t(const std::string&, const std::string&, int64_t, int64_t, int32_t)> on_complete_;
 
   /*! \brief The accepted input bytes, one per history row after the first; maintained only
    * while on_complete_ is set, and rolled back with the rows. */
@@ -706,7 +727,7 @@ class EarleyParser {
    * supported for grammars with token or character budgets.
    */
   void SetOnComplete(
-      std::function<void(const std::string&, const std::string&, int64_t, int64_t)> callback
+      std::function<int32_t(const std::string&, const std::string&, int64_t, int64_t, int32_t)> callback
   );
 
   /*! \brief Whether an OnComplete callback is set. */

@@ -2740,7 +2740,7 @@ std::string GrammarMatcher::FindJumpForwardString() { return pimpl_->FindJumpFor
 void GrammarMatcher::Rollback(int num_tokens) { pimpl_->Rollback(num_tokens); }
 
 void GrammarMatcher::SetOnComplete(
-    std::function<void(const std::string&, const std::string&, int64_t, int64_t)> callback
+    std::function<int32_t(const std::string&, const std::string&, int64_t, int64_t, int32_t)> callback
 ) {
   pimpl_->SetOnComplete(std::move(callback));
 }

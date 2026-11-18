@@ -157,11 +157,13 @@ class GrammarMatcher {
    * the matched bytes and their [begin, end) offsets in the accepted input. Must be set before
    * any input is accepted; while set, FillNextTokenBitmask and FindJumpForwardString are not
    * available. Completions of partial matches are reported too (e.g. "o", "ou", "out").
+   * The callback also receives the completed occurrence's environment id and returns the id the
+   * waiting parent continues with (return env to leave it unchanged).
    */
   void SetOnComplete(
-      std::function<
-          void(const std::string& rule, const std::string& text, int64_t begin, int64_t end)>
-          callback
+      std::function<int32_t(
+          const std::string& rule, const std::string& text, int64_t begin, int64_t end, int32_t env
+      )> callback
   );
 
   /*!
